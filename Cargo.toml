@@ -10,3 +10,4 @@ tokio = { version = "1.23.0", features = ["full"] }
 uuid = {version = "1.2.2", features = ["macro-diagnostics"]}
 rand = "0.8.5"
 btleplug = { version = "0.10", features = ["serde"] }
+axum = "*"
