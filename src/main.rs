@@ -1,22 +1,15 @@
-use axum::body::Body;
 use axum::extract::State;
-use axum::http;
-use axum::response::Response;
 use axum::{
-    handler::Handler,
-    response::{Html, IntoResponse},
+    response::{Html},
     routing::get,
     Router,
 };
 use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter, WriteType};
 use btleplug::platform::{Adapter, Manager, Peripheral};
-use http::response::Builder;
-use rand::{thread_rng, Rng};
 use tokio::sync::Mutex;
 use std::error::Error;
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc};
 
-use std::thread;
 use std::time::Duration;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time;
