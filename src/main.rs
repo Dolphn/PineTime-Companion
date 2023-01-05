@@ -15,6 +15,8 @@ use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time;
 use uuid::{uuid, Uuid};
 
+use colored::Colorize;
+
 const MAX_CONNECTION_ATTEMPS: i32 = 64;
 const HEART_RATE_ID: Uuid = uuid!("00002a37-0000-1000-8000-00805f9b34fb");
 
@@ -44,7 +46,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 
                 fail += 1;
                 if fail > MAX_CONNECTION_ATTEMPS {
-                    println!("Reached maximum count of connection attemps");
+                    let max_msg = String::from("Reached maximum count of connection attemps").red().bold();
+                    println!("{}",max_msg);
                     panic!()
                 }
                 continue;
@@ -62,15 +65,35 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let chars = pine_time.characteristics();
     let cmd_char = chars.iter().find(|c| c.uuid == HEART_RATE_ID).unwrap();
 
-    let channel: (Sender<u8>, Receiver<u8>) = channel(1);
+    let sending_channel: (Sender<u8>, Receiver<u8>) = channel(1);
+    let mut disconnect_channel: (Sender<i32>, Receiver<i32>) = channel(1);
 
-    tokio::spawn(serve(channel.1));
 
+    tokio::spawn(serve(sending_channel.1, disconnect_channel.0));
+
+    
     //Try to print out the heart rate
     loop {
         let h_rate = pine_time.read(cmd_char).await?;
         println!("Heartrate: {} bpm", h_rate.get(1).unwrap());
-        channel.0.send(*h_rate.get(1).unwrap()).await;
+        sending_channel.0.send(*h_rate.get(1).unwrap()).await;
+
+        match disconnect_channel.1.try_recv() {
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => (),
+            Ok(T) => match T {
+                0 => {
+                    let dis_msg = String::from("Disconnected").bright_blue().bold();
+                    pine_time.disconnect().await;
+                    println!("{}", dis_msg);
+                    return Ok(());
+                },
+                _ => ()
+            }
+            _ => {
+                pine_time.disconnect().await;
+                return Ok(())
+            }
+        }
     }
 
     Ok(())
@@ -86,15 +109,17 @@ async fn find_watch(central: &Adapter) -> Option<Peripheral> {
             .map(|name| name.contains("Time"))
             .unwrap_or(false)
         {
-            println!("Found watch!");
+            let found_msg = String::from("Found watch!").green();
+            println!("{}", found_msg);
             return Some(p);
         }
     }
     None
 }
 
-async fn serve(mut receiver: Receiver<u8>) {
-    let rcvr: Arc<Mutex<Rcvr>> = Arc::new(Mutex::new(Rcvr { receiver: receiver }));
+async fn serve(mut receiver: Receiver<u8>, mut sender: Sender<i32>) {
+    let rcvr: Arc<Mutex<Rcvr>> = Arc::new(Mutex::new(Rcvr::new(receiver).await));
+    let sndr: Arc<Mutex<Sndr>> = Arc::new(Mutex::new(Sndr::new(sender).await));
 
     // build our application with a single route
     let html_content = std::fs::read_to_string("E:/ES/index.html").unwrap();
@@ -103,8 +128,9 @@ async fn serve(mut receiver: Receiver<u8>) {
         .route(
             "/heart_rate",get(send_to_frontend))
         .with_state(rcvr)
-        .route("/", get(|| async { html_site }));
-
+        .route("/", get(|| async { html_site }))
+        .route("/disconnect", get(diconn_handler))
+        .with_state(sndr);
     /*heart_rate = match receiver.recv().await {
         Some(T) => T,
         None => {
@@ -123,6 +149,15 @@ struct Rcvr {
     receiver: Receiver<u8>,
 }
 
+struct Sndr {
+    sender: Sender<i32>
+}
+
+impl Sndr {
+    async fn new(sender: Sender<i32>) -> Self {
+        Sndr { sender }
+    }
+}
 
 impl Rcvr {
     async fn new(receiver: Receiver<u8>) -> Self {
@@ -139,4 +174,8 @@ async fn send_to_frontend(State(rcvr): State<Arc<Mutex<Rcvr>>>,) -> String {
         Some(T) => T.to_string(),
         None => 0.to_string(),
     }
+}
+
+async fn diconn_handler(State(sender): State<Arc<Mutex<Sndr>>>) {
+    sender.lock().await.sender.send(0).await;
 }
