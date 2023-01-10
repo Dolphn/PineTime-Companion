@@ -1,20 +1,9 @@
-use axum::extract::State;
-use axum::{
-    response::{Html},
-    routing::get,
-    Router,
-};
-use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter, WriteType};
-use btleplug::platform::{Adapter, Manager, Peripheral};
-use tokio::sync::Mutex;
-use std::error::Error;
-use std::sync::{Arc};
+use std::{io::{self, Write}, sync::Arc, error::Error, time::Duration};
+use axum::{response::Html, routing::get, Router, extract::State};
+use tokio::{sync::{mpsc::{error::TrySendError, channel, Receiver, Sender}, Mutex}, time};
 
-use std::time::Duration;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tokio::time;
 use uuid::{uuid, Uuid};
-
+use btleplug::{platform::{Adapter, Manager, Peripheral}, api::{Central, Manager as _, Peripheral as _, ScanFilter}};
 use colored::Colorize;
 
 const MAX_CONNECTION_ATTEMPS: i32 = 64;
@@ -39,15 +28,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!();
     let pine_time = loop {
         match find_watch(&central).await {
-            Some(T) => break T,
+            Some(t )=> break t,
             None => {
                 print!(". ");
+                io::stdout().flush()?;
                 time::sleep(Duration::from_millis(200)).await;
-                
+
                 fail += 1;
                 if fail > MAX_CONNECTION_ATTEMPS {
-                    let max_msg = String::from("Reached maximum count of connection attemps").red().bold();
-                    println!("{}",max_msg);
+                    let max_msg = String::from("Reached maximum count of connection attemps")
+                        .red()
+                        .bold();
+                    println!("{}", max_msg);
                     panic!()
                 }
                 continue;
@@ -68,30 +60,35 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let sending_channel: (Sender<u8>, Receiver<u8>) = channel(1);
     let mut disconnect_channel: (Sender<i32>, Receiver<i32>) = channel(1);
 
-
     tokio::spawn(serve(sending_channel.1, disconnect_channel.0));
 
-    
     //Try to print out the heart rate
     loop {
         let h_rate = pine_time.read(cmd_char).await?;
-        println!("Heartrate: {} bpm", h_rate.get(1).unwrap());
-        sending_channel.0.send(*h_rate.get(1).unwrap()).await;
+        let rate = h_rate.get(1).unwrap();
+        println!("Heartrate: {} bpm", rate);
+        match sending_channel.0.try_send(*rate) {
+            Ok(_) => (),
+            Err(e) => match e {
+                TrySendError::Full(_) => (),
+                TrySendError::Closed(e) => panic!("{}", e),
+            },
+        }
 
         match disconnect_channel.1.try_recv() {
             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => (),
-            Ok(T) => match T {
+            Ok(t) => match t {
                 0 => {
                     let dis_msg = String::from("Disconnected").bright_blue().bold();
-                    pine_time.disconnect().await;
+                    pine_time.disconnect().await?;
                     println!("{}", dis_msg);
                     return Ok(());
-                },
-                _ => ()
-            }
+                }
+                _ => (),
+            },
             _ => {
-                pine_time.disconnect().await;
-                return Ok(())
+                pine_time.disconnect().await?;
+                return Ok(());
             }
         }
     }
@@ -117,20 +114,24 @@ async fn find_watch(central: &Adapter) -> Option<Peripheral> {
     None
 }
 
-async fn serve(mut receiver: Receiver<u8>, mut sender: Sender<i32>) {
+async fn serve(receiver: Receiver<u8>, sender: Sender<i32>) {
     let rcvr: Arc<Mutex<Rcvr>> = Arc::new(Mutex::new(Rcvr::new(receiver).await));
     let sndr: Arc<Mutex<Sndr>> = Arc::new(Mutex::new(Sndr::new(sender).await));
 
     // build our application with a single route
-    let html_content = std::fs::read_to_string("E:/ES/index.html").unwrap();
-    let html_site = Html(html_content);
     let site = Router::new()
-        .route(
-            "/heart_rate",get(send_to_frontend))
+        .route("/heart_rate", get(send_to_frontend))
         .with_state(rcvr)
-        .route("/", get(|| async { html_site }))
+        .route(
+            "/",
+            get(|| async { Html(include_str!("../web/index.html")) }),
+        )
         .route("/disconnect", get(diconn_handler))
-        .with_state(sndr);
+        .with_state(sndr)
+        .route(
+            "/chart.js",
+            get(|| async { include_str!("../web/chart.min.js") }),
+        );
     /*heart_rate = match receiver.recv().await {
         Some(T) => T,
         None => {
@@ -150,7 +151,7 @@ struct Rcvr {
 }
 
 struct Sndr {
-    sender: Sender<i32>
+    sender: Sender<i32>,
 }
 
 impl Sndr {
@@ -165,17 +166,15 @@ impl Rcvr {
     }
 }
 
-async fn test() -> String {
-    "Hello".to_string()
-}
 
-async fn send_to_frontend(State(rcvr): State<Arc<Mutex<Rcvr>>>,) -> String {
+async fn send_to_frontend(State(rcvr): State<Arc<Mutex<Rcvr>>>) -> String {
     match rcvr.lock().await.receiver.recv().await {
-        Some(T) => T.to_string(),
+        Some(t) => t.to_string(),
         None => 0.to_string(),
     }
 }
 
-async fn diconn_handler(State(sender): State<Arc<Mutex<Sndr>>>) {
-    sender.lock().await.sender.send(0).await;
+async fn diconn_handler(State(sender): State<Arc<Mutex<Sndr>>>) -> &'static str {
+    sender.lock().await.sender.send(0).await.unwrap();
+    "Disconnected"
 }

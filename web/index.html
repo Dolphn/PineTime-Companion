@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script src="/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 950%;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 70%;
+        }
+
+        #mid {
+            padding-top: 15vh;
+            padding-left: 0vh;
+        }
+
+        #bpm {
+            font-size: large;
+        }
+
+        p {
+            margin-bottom: 0%;
+            color: rgb(255, 0, 0);
+        }
+
+        #bpm {
+            color: rgb(139, 1, 1);
+        }
+    </style>
+
+    <script type="text/javascript" defer>
+        let terminate = false;
+
+
+        // code to be executed  
+        // while (true) {
+        function removeData(chart) {
+            chart.data.labels.pop();
+            chart.data.datasets.forEach((dataset) => {
+                dataset.data.pop();
+            });
+        }
+
+
+
+        function range(size, startAt = 0) {
+            return [...Array(size).keys()].map(i => i + startAt);
+        }
+
+
+        async function visualBeat() {
+            const el = document.getElementById('heart_rate');
+            let rate = parseInt(el.textContent);
+            while (true) {
+                if (terminate) {
+                    return
+                }
+                rate = parseInt(el.textContent);
+                if (rate != 0) {
+                    el.style.color = "rgb(175, 25, 25)";
+                    await sleep(rate, 3 / 10);
+                    el.style.color = "rgb(255, 0, 0)";
+
+                }
+                await sleep(timeToSleep(rate, 7 / 10))
+            }
+        }
+
+
+        function timeToSleep(rate, fract) {
+            if (rate == 0) {
+                return 1000;
+            }
+            return (1 / (rate / 60000)) * fract;
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+        window.onload = function () {
+            visualBeat();
+            let chart = new Chart(document.getElementById('myChart'), {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Heart rate',
+                        data: [],
+                        borderWidth: 1,
+                        fill: false,
+                        borderColor: 'rgb(255, 36,64)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            suggestedMax: 200
+
+                        }
+                    }
+                }
+            });
+
+
+            chart.update();
+            let last = 0;
+            let cnt = 1;
+            setInterval(async () => {
+                if (terminate) {
+                    return;
+                }
+                let cur = await show_h_rate();
+                if (cur == -1) {
+                    return;
+                }
+
+                if (last != cur) {
+
+                    chart.data.labels.push(cnt);
+                    cnt += 1;
+                    last = cur;
+
+                    chart.data.datasets.forEach((dataset) => {
+                        dataset.data.push(cur);
+                    });
+                    chart.update();
+                }
+
+            }, 1000);
+        }
+
+
+
+
+        async function show_h_rate() {
+            let response;
+            try {
+                response = await fetch("/heart_rate")
+            } catch (error) {
+                if (error instanceof TypeError && terminate) {
+                    return -1;
+                }
+                else{
+                    console.log(terminate);
+                    throw error;
+                }
+            }
+
+            // indicates whether the response is successful (status code 200-299) or not
+            if (!response.ok) {
+                throw new Error(`Request failed with status ${reponse.status}`)
+            }
+            let data = await response.text()
+
+
+            document.getElementById('heart_rate').textContent = data
+            return parseInt(data);
+
+        }
+
+
+        /**
+                const req = new XMLHttpRequest()
+                console.log("Successful")
+                req.open("GET", "/heart_rate")
+                req.send
+        
+                req.onload = function () {
+                    if (req.status === 200) {
+                        //parse JSON datax`x
+                        var h_rate = req.responseText
+                        document.getElementById('heart_rate').textContent = h_rate
+                        console.log(h_rate)
+                    } else if (req.status === 404) {
+                        console.log("No records found")
+                    }
+                }
+               // }
+        */
+
+        async function disconnect() {
+            let response = await fetch("/disconnect")
+            // indicates whether the response is successful (status code 200-299) or not
+            if (!response.ok) {
+                throw new Error(`Request failed with status ${reponse.status}`)
+            }
+            
+            let data = await response.text();
+            console.log(data);
+           // await sleep(2000)
+            terminate = true;
+        }
+    </script>
+</head>
+
+<body>
+    <div id="mid">
+        <h1>Heart Rate</h1>
+
+        <p id="heart_rate">0</p>
+        <p id="bpm">bpm</p>
+        <button onclick="disconnect()">Disconnect</button>
+    </div>
+    <div>
+        <canvas id="myChart"></canvas>
+    </div>
+
+
+</body>
+
+</html>
