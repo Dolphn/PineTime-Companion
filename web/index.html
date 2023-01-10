@@ -16,7 +16,7 @@
         }
 
         #myChart{
-            max-height: 65vh;
+            max-height: 61vh;
         }
         h1 {
             margin-top: 0%;
@@ -138,10 +138,17 @@
                 }
             });
 
+            function passedTime(start) {
+                let time = new Date();
+                return new Date(time.getTime() - start.getTime());
+            }
+            function timeString(d) {
+                const dd = [d.getMinutes(), d.getSeconds()].map((a) => (a < 10 ? '0' + a : a));
+                    return dd.join(':');
+            }
 
             chart.update();
-            let last = 0;
-            let cnt = 1;
+            let start = new Date();
             setInterval(async () => {
                 if (terminate) {
                     return;
@@ -151,17 +158,15 @@
                     return;
                 }
 
-                if (last != cur) {
-
-                    chart.data.labels.push(cnt);
-                    cnt += 1;
-                    last = cur;
+                    let timeDiff = passedTime(start);
+                    let label = timeString(timeDiff);
+                    chart.data.labels.push(label);
 
                     chart.data.datasets.forEach((dataset) => {
                         dataset.data.push(cur);
                     });
                     chart.update();
-                }
+                
 
             }, 1000);
         }
