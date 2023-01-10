@@ -1,0 +1,1 @@
+/home/user/Dokumente/Uni/ES/PineTime-Companion/target/release/companion_app: /home/user/Dokumente/Uni/ES/PineTime-Companion/src/main.rs /home/user/Dokumente/Uni/ES/PineTime-Companion/web/chart.min.js /home/user/Dokumente/Uni/ES/PineTime-Companion/web/index.html
