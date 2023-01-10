@@ -1,10 +1,25 @@
-use std::{io::{self, Write}, sync::Arc, error::Error, time::Duration};
-use axum::{response::Html, routing::get, Router, extract::State};
-use tokio::{sync::{mpsc::{error::TrySendError, channel, Receiver, Sender}, Mutex}, time};
+use std::{
+    error::Error,
+    io::{self, Write},
+    sync::Arc,
+    time::Duration,
+};
 
-use uuid::{uuid, Uuid};
-use btleplug::{platform::{Adapter, Manager, Peripheral}, api::{Central, Manager as _, Peripheral as _, ScanFilter}};
+use axum::{extract::State, response::Html, routing::get, Router};
+use tokio::{
+    sync::{
+        mpsc::{channel, error::TrySendError, Receiver, Sender},
+        Mutex,
+    },
+    time,
+};
+
+use btleplug::{
+    api::{Central, Manager as _, Peripheral as _, ScanFilter},
+    platform::{Adapter, Manager, Peripheral},
+};
 use colored::Colorize;
+use uuid::{uuid, Uuid};
 
 const MAX_CONNECTION_ATTEMPS: i32 = 64;
 const HEART_RATE_ID: Uuid = uuid!("00002a37-0000-1000-8000-00805f9b34fb");
@@ -28,7 +43,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!();
     let pine_time = loop {
         match find_watch(&central).await {
-            Some(t )=> break t,
+            Some(t) => break t,
             None => {
                 print!(". ");
                 io::stdout().flush()?;
@@ -165,7 +180,6 @@ impl Rcvr {
         Rcvr { receiver }
     }
 }
-
 
 async fn send_to_frontend(State(rcvr): State<Arc<Mutex<Rcvr>>>) -> String {
     match rcvr.lock().await.receiver.recv().await {
