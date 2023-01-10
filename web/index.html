@@ -66,25 +66,10 @@
     </style>
 
     <script type="text/javascript" defer>
-        let terminate = false;
+        let terminate = false; //Terminator variable, if disconnect is requested
 
 
-        // code to be executed  
-        // while (true) {
-        function removeData(chart) {
-            chart.data.labels.pop();
-            chart.data.datasets.forEach((dataset) => {
-                dataset.data.pop();
-            });
-        }
-
-
-
-        function range(size, startAt = 0) {
-            return [...Array(size).keys()].map(i => i + startAt);
-        }
-
-
+        //function to make beating effect on the shown heart rate
         async function visualBeat() {
             const el = document.getElementById('heart_rate');
             let rate = parseInt(el.textContent);
@@ -104,6 +89,7 @@
         }
 
 
+        //Helping fn for visualization
         function timeToSleep(rate, fract) {
             if (rate == 0) {
                 return 1000;
@@ -111,11 +97,14 @@
             return (1 / (rate / 60000)) * fract;
         }
 
+        //real sleep function in one task
         function sleep(ms) {
             return new Promise(resolve => setTimeout(resolve, ms));
         }
+
+        //central 'main'-like function
         window.onload = function () {
-            visualBeat();
+            visualBeat();// create task to show beating parallel
             let chart = new Chart(document.getElementById('myChart'), {
                 type: 'line',
                 data: {
@@ -139,9 +128,10 @@
                     }
                 }
             });
-
-
             chart.update();
+            //created chart
+
+            //Add new data to chart and fetch every second
             let start = new Date();
             setInterval(async () => {
                 if (terminate) {
@@ -166,10 +156,13 @@
         }
 
 
+        //Calculate time since start
         function passedTime(start) {
             let time = new Date();
             return new Date(time.getTime() - start.getTime());
         }
+
+        //parse time to nice readable string
         function timeString(d) {
             const dd = [d.getMinutes(), d.getSeconds()].map((a) => (a < 10 ? '0' + a : a));
             return dd.join(':');
@@ -177,6 +170,7 @@
 
 
 
+        //Fetches and puts the heart rate to text box
         async function show_h_rate() {
             let response;
             try {
@@ -197,32 +191,12 @@
             }
             let data = await response.text()
 
-
             document.getElementById('heart_rate').textContent = data
             return parseInt(data);
 
         }
 
-
-        /**
-                const req = new XMLHttpRequest()
-                console.log("Successful")
-                req.open("GET", "/heart_rate")
-                req.send
-        
-                req.onload = function () {
-                    if (req.status === 200) {
-                        //parse JSON datax`x
-                        var h_rate = req.responseText
-                        document.getElementById('heart_rate').textContent = h_rate
-                        console.log(h_rate)
-                    } else if (req.status === 404) {
-                        console.log("No records found")
-                    }
-                }
-               // }
-        */
-
+        //called by button click; requests disconnect on server and sets Terminate Variable for frontend
         async function disconnect() {
             let response = await fetch("/disconnect")
             // indicates whether the response is successful (status code 200-299) or not

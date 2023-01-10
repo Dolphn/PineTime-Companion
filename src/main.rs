@@ -26,11 +26,11 @@ const HEART_RATE_ID: Uuid = uuid!("00002a37-0000-1000-8000-00805f9b34fb");
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    //Create channels to communicate between ble connection and server
     let sending_channel: (Sender<u8>, Receiver<u8>) = channel(1);
     let mut disconnect_channel: (Sender<i32>, Receiver<i32>) = channel(1);
-
+    //Spawn server task
     tokio::spawn(serve(sending_channel.1, disconnect_channel.0));
-
 
     let manager = Manager::new().await.unwrap();
 
@@ -51,6 +51,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         match find_watch(&central).await {
             Some(t) => break t,
             None => {
+                // When connecting fails, fail counter got increased and there will be feedback
                 print!(". ");
                 io::stdout().flush()?;
                 time::sleep(Duration::from_millis(200)).await;
@@ -74,11 +75,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // discover services and characteristics
     pine_time.discover_services().await?;
 
-    // find the characteristic we want
+    // find the characteristic we want to read out the heart rate
     let chars = pine_time.characteristics();
     let cmd_char = chars.iter().find(|c| c.uuid == HEART_RATE_ID).unwrap();
 
-    //Try to print out the heart rate
+    //Repeating to receive data from the watch and send it to server and watching, if disconnect is requested
     loop {
         let h_rate = pine_time.read(cmd_char).await?;
         let rate = h_rate.get(1).unwrap();
@@ -134,7 +135,7 @@ async fn serve(receiver: Receiver<u8>, sender: Sender<i32>) {
     let rcvr: Arc<Mutex<Rcvr>> = Arc::new(Mutex::new(Rcvr::new(receiver).await));
     let sndr: Arc<Mutex<Sndr>> = Arc::new(Mutex::new(Sndr::new(sender).await));
 
-    // build our application with a single route
+    //Create the router
     let site = Router::new()
         .route("/heart_rate", get(send_to_frontend))
         .with_state(rcvr)
@@ -148,14 +149,8 @@ async fn serve(receiver: Receiver<u8>, sender: Sender<i32>) {
             "/chart.js",
             get(|| async { include_str!("../web/chart.min.js") }),
         );
-    /*heart_rate = match receiver.recv().await {
-        Some(T) => T,
-        None => {
-            return ;
-        }
-    }*/
 
-    // run it with hyper on localhost:3000
+    //Serve on localhost:3000
     axum::Server::bind(&"127.0.0.1:3000".parse().unwrap())
         .serve(site.into_make_service())
         .await
@@ -182,6 +177,7 @@ impl Rcvr {
     }
 }
 
+//Handler to send heart rate to frontend
 async fn send_to_frontend(State(rcvr): State<Arc<Mutex<Rcvr>>>) -> String {
     match rcvr.lock().await.receiver.recv().await {
         Some(t) => t.to_string(),
@@ -189,6 +185,7 @@ async fn send_to_frontend(State(rcvr): State<Arc<Mutex<Rcvr>>>) -> String {
     }
 }
 
+//Handler for scanning for incoming disconnect requests
 async fn diconn_handler(State(sender): State<Arc<Mutex<Sndr>>>) -> &'static str {
     sender.lock().await.sender.send(0).await.unwrap();
     "Disconnected"
