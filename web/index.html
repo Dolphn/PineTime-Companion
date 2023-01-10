@@ -140,14 +140,6 @@
                 }
             });
 
-            function passedTime(start) {
-                let time = new Date();
-                return new Date(time.getTime() - start.getTime());
-            }
-            function timeString(d) {
-                const dd = [d.getMinutes(), d.getSeconds()].map((a) => (a < 10 ? '0' + a : a));
-                return dd.join(':');
-            }
 
             chart.update();
             let start = new Date();
@@ -173,6 +165,15 @@
             }, 1000);
         }
 
+
+        function passedTime(start) {
+            let time = new Date();
+            return new Date(time.getTime() - start.getTime());
+        }
+        function timeString(d) {
+            const dd = [d.getMinutes(), d.getSeconds()].map((a) => (a < 10 ? '0' + a : a));
+            return dd.join(':');
+        }
 
 
 

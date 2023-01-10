@@ -26,6 +26,12 @@ const HEART_RATE_ID: Uuid = uuid!("00002a37-0000-1000-8000-00805f9b34fb");
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    let sending_channel: (Sender<u8>, Receiver<u8>) = channel(1);
+    let mut disconnect_channel: (Sender<i32>, Receiver<i32>) = channel(1);
+
+    tokio::spawn(serve(sending_channel.1, disconnect_channel.0));
+
+
     let manager = Manager::new().await.unwrap();
 
     // get the first bluetooth adapter
@@ -71,11 +77,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // find the characteristic we want
     let chars = pine_time.characteristics();
     let cmd_char = chars.iter().find(|c| c.uuid == HEART_RATE_ID).unwrap();
-
-    let sending_channel: (Sender<u8>, Receiver<u8>) = channel(1);
-    let mut disconnect_channel: (Sender<i32>, Receiver<i32>) = channel(1);
-
-    tokio::spawn(serve(sending_channel.1, disconnect_channel.0));
 
     //Try to print out the heart rate
     loop {
